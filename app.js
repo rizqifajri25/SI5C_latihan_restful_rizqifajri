@@ -1,82 +1,52 @@
-	const express = require('express');
-	const app = express();
-	const PORT = 3000;
-	
-	// Middleware agar req.body (JSON) dapat dibaca
-	app.use(express.json());
-	
-	// Data sementara (disimpan di memori, hilang saat server restart)
-	let mahasiswa = [
-	  { id: 1, nama: 'Andi', jurusan: 'Sistem Informasi' },
-	  { id: 2, nama: 'Budi', jurusan: 'Informatika' },
-	];
-	let nextId = 3;
-	
-	// GET / -> memastikan server berjalan
-	app.get('/', (req, res) => {
-	  res.send('Server Express.js berjalan!');
-	});
-	
-	// GET /mahasiswa -> seluruh data, bisa difilter: /mahasiswa?jurusan=Informatika
-	app.get('/mahasiswa', (req, res) => {
-	  const { jurusan } = req.query;
-	
-	  if (jurusan) {
-	    const hasil = mahasiswa.filter((m) => m.jurusan === jurusan);
-	    return res.json(hasil);
-	  }
-	
-	  res.json(mahasiswa);
-	});
-	
-	// GET /mahasiswa/:id -> satu data berdasarkan id
-	app.get('/mahasiswa/:id', (req, res) => {
-	  const id = parseInt(req.params.id);
-	  const data = mahasiswa.find((m) => m.id === id);
-	
-	  if (!data) return res.status(404).json({ message: 'Data tidak ditemukan' });
-	  res.json(data);
-	});
-	
-	// POST /mahasiswa -> tambah data baru
-	app.post('/mahasiswa', (req, res) => {
-	  const { nama, jurusan } = req.body;
-	
-	  if (!nama || !jurusan) {
-	    return res.status(400).json({ message: 'nama dan jurusan wajib diisi' });
-	  }
-	
-	  const baru = { id: nextId++, nama, jurusan };
-	  mahasiswa.push(baru);
-	  res.status(201).json(baru);
-	});
-	
-	// PUT /mahasiswa/:id -> ubah data
-	app.put('/mahasiswa/:id', (req, res) => {
-	  const id = parseInt(req.params.id);
-	  const index = mahasiswa.findIndex((m) => m.id === id);
-	
-	  if (index === -1) {
-	    return res.status(404).json({ message: 'Data tidak ditemukan' });
-	  }
-	
-	  mahasiswa[index] = { ...mahasiswa[index], ...req.body, id };
-	  res.json(mahasiswa[index]);
-	});
-	
-	// DELETE /mahasiswa/:id -> hapus data
-	app.delete('/mahasiswa/:id', (req, res) => {
-	  const id = parseInt(req.params.id);
-	  const index = mahasiswa.findIndex((m) => m.id === id);
-	
-	  if (index === -1) {
-	    return res.status(404).json({ message: 'Data tidak ditemukan' });
-	  }
-	
-	  mahasiswa.splice(index, 1);
-	  res.status(204).send();
-	});
-	
-	app.listen(PORT, () => {
-	  console.log(`Server berjalan di http://localhost:${PORT}`);
-	});
+require('dotenv').config();
+
+const express = require('express');
+const cors = require('cors');
+const mongoose = require('mongoose');   // tambahkan di antara require lainnya
+
+const logger = require('./middlewares/logger');
+const { notFoundHandler, errorHandler } = require('./middlewares/errorHandler');
+
+const mahasiswaRoutes = require('./routes/mahasiswaRoutes');
+const fakultasRoutes = require('./routes/fakultasRoutes');
+const prodiRoutes = require('./routes/prodiRoutes');
+const dosenRoutes = require('./routes/dosenRoutes');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const mongoUri = process.env.DB_URI || process.env.MONGODB_URI;
+
+// ---------- Middleware global ----------
+app.use(logger);
+app.use(cors({
+  origin: process.env.CORS_ORIGIN,
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+}));
+app.use(express.json());
+
+// ---------- Route dasar ----------
+app.get('/', (req, res) => {
+  res.send('Server Express.js berjalan!');
+});
+
+// ---------- Route per modul ----------
+app.use('/mahasiswa', mahasiswaRoutes);
+app.use('/fakultas', fakultasRoutes);
+app.use('/prodi', prodiRoutes);
+app.use('/dosen', dosenRoutes);
+
+// ---------- Handler 404 dan error handler (paling bawah) ----------
+app.use(notFoundHandler);
+app.use(errorHandler);
+
+if (!mongoUri) {
+  console.warn('DB_URI (atau MONGODB_URI) belum diatur; server berjalan tanpa koneksi MongoDB.');
+} else {
+  mongoose.connect(mongoUri)
+    .then(() => console.log('Terhubung ke MongoDB'))
+    .catch((err) => {
+      console.error('Gagal terhubung ke MongoDB:', err.message);
+    });
+}
+
+app.listen(PORT, () => console.log(`Server berjalan di http://localhost:${PORT}`));
